@@ -49,7 +49,7 @@
   */
 
 /* USER CODE BEGIN PRIVATE_TYPES */
-
+extern uint8_t usb_rx_buffer[APP_RX_DATA_SIZE];
 /* USER CODE END PRIVATE_TYPES */
 
 /**
@@ -261,6 +261,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   /* USER CODE BEGIN 6 */
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+  memcpy(usb_rx_buffer, Buf, (size_t)*Len);
   return (USBD_OK);
   /* USER CODE END 6 */
 }

@@ -48,6 +48,24 @@ I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
 gb_metadata_t gb_metadata = {0};
+
+uint8_t usb_rx_buffer[APP_RX_DATA_SIZE];
+
+uint8_t gb_rom_buff[ROM_BUFFER_SIZE];
+
+
+uint8_t tetris_header[]  = {
+	0x00, 0xC3, 0x50, 0x01, 0xCE, 0xED, 0x66, 0x66,
+	0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83,
+	0x00, 0x0C, 0x00, 0x0D, 0x00, 0x08, 0x11, 0x1F,
+	0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6,
+	0xDD, 0xDD, 0xD9, 0x99, 0xBB, 0xBB, 0x67, 0x63,
+	0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F,
+	0xBB, 0xB9, 0x33, 0x3E, 0x54, 0x45, 0x54, 0x52,
+	0x49, 0x53, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x01, 0x01, 0x0A, 0x16, 0xBF
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -56,32 +74,112 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
-void init_test_gb_metadata(void)
+//void init_test_gb_metadata(void)
+//{
+//	for(uint8_t i = 0; i < ROM_TITLE_LEN; ++i)
+//	{
+//		gb_metadata.rom_title[i] = i+65;
+//	}
+//
+//	gb_metadata.manufacturers_code = 0x69;
+//	gb_metadata.cgb_flag           = CGB_SUPPORT;
+//	gb_metadata.new_licensee_code  = CAPCOM;
+//	gb_metadata.sgb_flag           = SGB_NO;
+//	gb_metadata.cart_type          = MBC1_RAM_BATT;
+//	gb_metadata.rom_size           = ROM_512KB;
+//	gb_metadata.ram_size           = RAM_8KB;
+//	gb_metadata.dest_code          = NO_JAP;
+//	gb_metadata.old_licensee_code  = 0x00;
+//	gb_metadata.mask_rom_ver_num   = 0x01;
+//	gb_metadata.checksum           = 0x03;
+//}
+
+
+void unpack_metadata(gb_metadata_t* md, uint8_t* buff)
 {
-	for(uint8_t i = 0; i < ROM_TITLE_LEN; ++i)
-	{
-		gb_metadata.rom_title[i] = i+65;
-	}
-
-
-	gb_metadata.manufacturers_code = 0x69;
-	gb_metadata.cgb_flag           = CGB_SUPPORT;
-	gb_metadata.new_licensee_code  = CAPCOM;
-	gb_metadata.sgb_flag           = SGB_NO;
-	gb_metadata.cart_type          = MBC1_RAM_BATT;
-	gb_metadata.rom_size           = ROM_512KB;
-	gb_metadata.ram_size           = RAM_8KB;
-	gb_metadata.dest_code          = NO_JAP;
-	gb_metadata.old_licensee_code  = 0x00;
-	gb_metadata.mask_rom_ver_num   = 0x01;
-	gb_metadata.checksum           = 0x03;
+	memcpy(&md->entry_point,        buff + HEADER_ADDR(CART_ENTRY_POINT),  ENTRY_POINT_LEN);
+	memcpy(&md->rom_title,          buff + HEADER_ADDR(CART_TITLE),        ROM_TITLE_LEN);
+	memcpy(&md->rom_title[11],      buff + HEADER_ADDR(CART_MAUFACTURER),  MAN_CODE_LEN);
+	memcpy(&md->rom_title[15],      buff + HEADER_ADDR(CART_CGB_FLAG),     1);
+	memcpy(&md->new_licensee_code,  buff + HEADER_ADDR(CART_NEW_LIC_CODE), 2);
+	memcpy(&md->sgb_flag,           buff + HEADER_ADDR(CART_SGB_FLAG),     1);
+	memcpy(&md->cart_type,          buff + HEADER_ADDR(CART_TYPE),         1);
+	memcpy(&md->rom_size,           buff + HEADER_ADDR(CART_ROM_SIZE),     1);
+	memcpy(&md->ram_size,           buff + HEADER_ADDR(CART_RAM_SIZE),     1);
+	memcpy(&md->dest_code,          buff + HEADER_ADDR(CART_DEST_CODE),    1);
+	memcpy(&md->old_licensee_code,  buff + HEADER_ADDR(CART_OLD_LIC_CODE), 1);
+	memcpy(&md->mask_rom_ver_num,   buff + HEADER_ADDR(CART_MASK_ROM_VER), 1);
+	memcpy(&md->checksum,           buff + HEADER_ADDR(CART_HEADER_CHECK), 1);
 }
 
-void address_bus_init();
-void data_bus_init();
 
-void gb_set_address(uint16_t addr);
-uint8_t gb_fetch_data(uint16_t addr);
+void address_bus_init();
+
+//port b clock already started. no need to call this
+void data_bus_init()
+{
+	// input mode & floating input are reset state so no need to set
+	RCC->APB2ENR |= RCC_APB2ENR_IOPBEN;
+}
+
+inline uint8_t data_bus_read(void)
+{
+	// TODO: figure out what these need to be set to
+//	HAL_GPIO_WritePin(data_bus_dir_GPIO_Port, data_bus_dir_Pin, GPIO_PIN_RESET);
+//	HAL_GPIO_WritePin(gb_cs_GPIO_Port, gb_cs_Pin, GPIO_PIN_RESET);
+//	HAL_GPIO_WritePin(gb_read_GPIO_Port, gb_read_Pin, GPIO_PIN_RESET);
+	return DATA_BUS_PORT->IDR & !DATA_BUS_BITMASK;
+}
+void gb_set_read(void);
+void gb_set_address(uint16_t addr)
+{
+	// TODO: figure out what these need to be set to
+	gb_set_read();
+	HAL_GPIO_WritePin(sr_latch_GPIO_Port, sr_latch_Pin, GPIO_PIN_RESET);
+
+	for(uint8_t i = 0; i < ADDR_BUS_WIDTH; ++i)
+	{
+		HAL_GPIO_WritePin(sr_clk_GPIO_Port, sr_clk_Pin, GPIO_PIN_RESET);
+
+		if(0x01 && (addr >> i))
+		{
+			HAL_GPIO_WritePin(sr_data_GPIO_Port, sr_data_Pin, GPIO_PIN_SET);
+		}
+		else
+		{
+			HAL_GPIO_WritePin(sr_data_GPIO_Port, sr_data_Pin, GPIO_PIN_RESET);
+		}
+
+
+		HAL_GPIO_WritePin(sr_clk_GPIO_Port, sr_clk_Pin, GPIO_PIN_SET);
+	}
+
+	HAL_GPIO_WritePin(sr_latch_GPIO_Port, sr_latch_Pin, GPIO_PIN_SET);
+}
+
+void gb_set_read(void)
+{
+//		HAL_GPIO_WritePin(addr_bus_dir_GPIO_Port, addr_bus_dir_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(gb_cs_GPIO_Port, gb_cs_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(gb_read_GPIO_Port, gb_read_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(gb_write_GPIO_Port, gb_write_Pin, GPIO_PIN_SET);
+}
+
+void gb_set_write(void)
+{
+//		HAL_GPIO_WritePin(addr_bus_dir_GPIO_Port, addr_bus_dir_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(gb_cs_GPIO_Port, gb_cs_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(gb_read_GPIO_Port, gb_read_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(gb_write_GPIO_Port, gb_write_Pin, GPIO_PIN_SET);
+}
+
+uint8_t gb_fetch_data(uint16_t addr)
+{
+	gb_set_address(addr);
+
+	return data_bus_read();
+}
+
 inline uint8_t gb_header_checksum(gb_metadata_t *metadata)
 {
 	uint8_t checksum = 0;
@@ -97,29 +195,92 @@ inline uint8_t gb_header_checksum(gb_metadata_t *metadata)
 
 bool client_send_metadata(gb_metadata_t *metadata)
 {
-//	if(sizeof(*metadata) != METADATA_SIZE_BYTES)
-//	{
-//		return false;
-//	}
-
 	client_instruction_e instruction = START_SEND_METADATA;
 
 	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)&start_delimiter, sizeof(uint8_t)));
 	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)&instruction,     sizeof(uint8_t)));
-	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)metadata,         sizeof(gb_metadata_t)));
-
-	instruction = END_SEND_METADATA;
-
-	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)&instruction,     sizeof(uint8_t)));
-	// tx checksum
+	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)metadata,         30));
 	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)&end_delimiter,   sizeof(uint8_t)));
 
 	return true;
 }
 
+void client_listen(void)
+{
+
+}
+
 void client_send_chunk(uint8_t* data, uint8_t len);
 
-void dump_rom();
+
+
+//void set_test_metadata(gb_metadata_t *metadata)
+//{
+//	char title[ROM_TITLE_LEN] = "Testicles";
+//
+//	memcpy(gb_metadata.rom_title, title, ROM_TITLE_LEN);
+//
+//	gb_metadata.manufacturers_code = 0x69;
+//	gb_metadata.cgb_flag           = CGB_SUPPORT;
+//	gb_metadata.new_licensee_code  = CAPCOM;
+//	gb_metadata.sgb_flag           = SGB_SUPPORT;
+//	gb_metadata.cart_type          = POCKET_CAMERA;
+//	gb_metadata.rom_size           = ROM_512KB;
+//	gb_metadata.ram_size           = RAM_8KB;
+//	gb_metadata.dest_code          = NO_JAP;
+//	gb_metadata.old_licensee_code  = 0x00;
+//	gb_metadata.mask_rom_ver_num   = 0x01;
+//	gb_metadata.checksum           = 0x03;
+//}
+
+void send_test_metadata(gb_metadata_t *metadata)
+{
+	unpack_metadata(metadata, tetris_header);
+	client_send_metadata(metadata);
+}
+
+
+void send_test_rom(gb_metadata_t *metadata, uint8_t num_pages)
+{
+	set_test_metadata(metadata);
+
+	client_instruction_e instruction = START_SEND_ROM;
+	const uint16_t size = sizeof(uint16_t) + sizeof(gb_metadata_t) + (ROM_BUFFER_SIZE * num_pages);
+
+	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)&start_delimiter,        sizeof(uint8_t)));
+	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)&instruction,            sizeof(uint8_t)));
+	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)&size,                   sizeof(uint8_t)));
+	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)(&size)+sizeof(uint8_t), sizeof(uint8_t))); // size >> 8. compiler yelled
+	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)metadata,                sizeof(gb_metadata_t)));
+
+	// generate buffer
+	for(uint8_t page = 0; page < num_pages; ++page)
+	{
+		for(uint16_t i = 0; i < ROM_BUFFER_SIZE; i+=2)
+		{
+			gb_rom_buff[i] = 'A' + page;
+
+			if(i < ROM_BUFFER_SIZE - 1)
+			{
+				gb_rom_buff[i + 1] = i;
+			}
+		}
+		while(USBD_BUSY == CDC_Transmit_FS(gb_rom_buff, sizeof(ROM_BUFFER_SIZE)));
+	}
+	// tx checksum
+	while(USBD_BUSY == CDC_Transmit_FS((uint8_t*)&end_delimiter,   sizeof(uint8_t)));
+}
+
+
+void dump_rom()
+{
+	for(uint16_t i = 0; i < 64; ++i)
+	{
+
+	}
+}
+
+
 void dump_ram();
 
 
@@ -173,10 +334,12 @@ int main(void)
   MX_USB_DEVICE_Init();
   MX_CRC_Init();
   /* USER CODE BEGIN 2 */
-  init_test_gb_metadata();
+//  init_test_gb_metadata();
+//  set_test_metadata(&gb_metadata);
+  	 unpack_metadata(&gb_metadata, tetris_header);
 
 
-  char* msg = "GB rom dumper usb serial";
+//  char* msg = "GB rom dumper usb serial";
 
 
 //  memcpy(&gb_metadata, buf, sizeof(gb_msetadata_t));

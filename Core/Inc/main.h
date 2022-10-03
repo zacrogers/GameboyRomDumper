@@ -44,8 +44,14 @@ extern "C" {
 #define ADDR_BUS_LOWER_PORT    GPIOB
 #define ADDR_BUS_LOWER_BITMASK 0x0004 // Port B (0 - 4)
 
+#define ADDR_BUS_WIDTH         (uint8_t)15
+
 #define DATA_BUS_PORT          GPIOB
 #define DATA_BUS_BITMASK       0xFF00 // Port B (8 - 15)
+#define DATA_BUS_WIDTH         (uint8_t)8
+
+#define ROM_BUFFER_SIZE 1024
+
 
 typedef enum
 {
@@ -83,7 +89,9 @@ typedef enum
 }gb_type_e;
 
 
+#define ENTRY_POINT_LEN     (uint8_t) 4
 #define ROM_TITLE_LEN       (uint8_t) 16
+#define MAN_CODE_LEN        (uint8_t) 4
 #define METADATA_SIZE_BYTES (uint8_t) 31
 
 //uint8_t nintendo_logo[48] = {
@@ -111,38 +119,41 @@ typedef enum
 	CART_DEST_CODE    = 0x014A,
 	CART_OLD_LIC_CODE = 0x014B,
 	CART_MASK_ROM_VER = 0x014C,
-	CART_HEADER_CRC   = 0x014D,
-	CART_GLOBAL_CRC   = 0x014E,
+	CART_HEADER_CHECK = 0x014D,
+	CART_GLOBAL_CHECK = 0x014E,
 	CART_HEADER_END   = 0x014F
 }cartridge_header_address_e;
+
+// removes offset so enum values can be used for pointer arithmetic
+#define HEADER_ADDR(addr) (addr - CART_ENTRY_POINT)
 
 
 typedef enum
 {
-	CGB_SUPPORT       = 0x80,
+	CGB_SUPPORT       = (uint8_t)0x80,
 	CGB_ONLY          = 0xC0
 }cgb_flag_e;
 
 
 typedef enum
 {
-	NONE              = 0x00,
-	NINTENDO_RND      = 0x01,
-	CAPCOM            = 0x08
+	NONE              = (uint16_t)0x0000,
+	NINTENDO_RND      = (uint16_t)0x0001,
+	CAPCOM            = (uint16_t)0x0008
 	// TODO: more of these
 }new_licensee_code_e;
 
 
 typedef enum
 {
-	SGB_NO            = 0x00,
+	SGB_NO            = (uint8_t)0x00,
 	SGB_SUPPORT       = 0x03
 }sgb_flag_e;
 
 
 typedef enum
 {
-	ROM_ONLY          = 0x00,
+	ROM_ONLY          = (uint8_t)0x00,
 	MBC1              = 0x01,
 	MBC1_RAM          = 0x02,
 	MBC1_RAM_BATT     = 0x03,
@@ -175,7 +186,7 @@ typedef enum
 
 typedef enum
 {
-	ROM_32KB          = 0x00,  // no rom banks
+	ROM_32KB          = (uint8_t)0x00,  // no rom banks
 	ROM_64KB          = 0x01,  // 4 banks
 	ROM_128KB         = 0x02,  // 8 banks
 	ROM_256KB         = 0x03,  // 16 banks
@@ -192,7 +203,7 @@ typedef enum
 
 typedef enum
 {
-	RAM_NONE          = 0x00,
+	RAM_NONE          = (uint8_t)0x00,
 	RAM_2KB           = 0x01,
 	RAM_8KB           = 0x02,
 	RAM_32KB          = 0x03,  // 4 banks of 8kB
@@ -203,17 +214,22 @@ typedef enum
 
 typedef enum
 {
-	JAP    = 0x00,
+	JAP    = (uint8_t)0x00,
 	NO_JAP = 0x01
 }dest_code_e;
+
+typedef union
+{
+
+}title_u;
 
 
 typedef struct
 {
-	uint8_t             entry_point[4];
+	uint8_t             entry_point[ENTRY_POINT_LEN];
 	char                rom_title[ROM_TITLE_LEN];
-	uint8_t             manufacturers_code;
-	cgb_flag_e          cgb_flag;
+//	char                manufacturers_code[MAN_CODE_LEN];
+//	cgb_flag_e          cgb_flag;
 	new_licensee_code_e new_licensee_code;
 	sgb_flag_e          sgb_flag;
 	cart_type_e         cart_type;
